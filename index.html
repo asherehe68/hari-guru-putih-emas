@@ -1455,6 +1455,51 @@ body.started [data-hero]{animation:heroUp 1.1s cubic-bezier(.2,.8,.3,1) var(--d,
   </div>
 
   <script>
+/* PENYELAMAT ASET: kalau file di "Assets/..." tidak ketemu (mis. folder Assets tidak ikut
+   ter-upload atau beda huruf besar/kecil), otomatis coba lokasi alternatif. */
+(() => {
+  const variants = (url) => {
+    let clean = url.split('#')[0].split('?')[0];
+    try { clean = decodeURIComponent(clean); } catch (e) {}
+    const m = clean.match(/^(?:https?:\/\/[^/]+)?\/?(?:[Aa]ssets\/)?(.+)$/);
+    const file = m ? m[1] : clean;
+    const dot = file.lastIndexOf('.');
+    const base = dot > -1 ? file.slice(0, dot) : file;
+    const ext = dot > -1 ? file.slice(dot) : '';
+    const exts = [ext, ext.toLowerCase(), ext.toUpperCase(), ...(/jpe?g|png|webp/i.test(ext) ? ['.webp', '.jpg', '.jpeg', '.png', '.JPG', '.JPEG', '.PNG'] : [])];
+    const names = [base, base.toLowerCase()];
+    const list = [];
+    for (const dir of ['Assets/', '', 'assets/', './Assets/'])
+      for (const n of names) for (const e of exts) list.push(dir + n + e);
+    return [...new Set(list)].map(encodeURI);
+  };
+  const retry = (el, attr) => {
+    const orig = el.getAttribute(attr);
+    if (!orig || orig.startsWith('data:') || orig.startsWith('blob:')) return;
+    if (!el._alt) { el._alt = variants(orig); el._i = 0; }
+    const next = el._alt[el._i++];
+    if (!next) return;
+    if (next === orig) return retry(el, attr);
+    el.setAttribute(attr, next);
+    const media = el.tagName === 'SOURCE' ? el.parentElement : null;
+    if (media && media.load) media.load();
+  };
+  window.addEventListener('error', (e) => {
+    const t = e.target;
+    if (!t || !t.tagName) return;
+    if (t.tagName === 'IMG' || t.tagName === 'AUDIO') retry(t, 'src');
+    else if (t.tagName === 'SOURCE') retry(t, 'src');
+    else if (t.tagName === 'VIDEO' && !t.querySelector('source')) retry(t, 'src');
+  }, true);
+  window.resolveAsset = async (url) => {
+    for (const c of variants(url)) {
+      try { const r = await fetch(c, { method: 'HEAD' }); if (r.ok) return c; } catch (e) {}
+    }
+    return url;
+  };
+})();
+</script>
+  <script>
 (() => {
   'use strict';
 
@@ -1488,7 +1533,7 @@ body.started [data-hero]{animation:heroUp 1.1s cubic-bezier(.2,.8,.3,1) var(--d,
   if (bouquetImg) {
     const exts = ['.jpg', '.png', '.webp', '.jpeg', '.JPG', '.PNG', '.JPEG'];
     let bIdx = 0;
-    bouquetImg.onerror = function() {
+    bouquetImg._oldErr = function() {
       bIdx++;
       if (bIdx < exts.length) {
         this.src = `Assets/Buket-Pak-Mus${exts[bIdx]}`;
@@ -1504,7 +1549,7 @@ body.started [data-hero]{animation:heroUp 1.1s cubic-bezier(.2,.8,.3,1) var(--d,
   if (heroImg) {
     const exts = ['.jpg', '.png', '.webp', '.jpeg', '.JPG', '.PNG', '.JPEG'];
     let idx = 0;
-    heroImg.onerror = function() {
+    heroImg._oldErr = function() {
       idx++;
       if (idx < exts.length) {
         this.src = `Assets/Foto-bareng-Bapak${exts[idx]}`;
@@ -1673,6 +1718,7 @@ body.started [data-hero]{animation:heroUp 1.1s cubic-bezier(.2,.8,.3,1) var(--d,
   if (CONFIG.audioFile) {
     audioEl = new Audio(CONFIG.audioFile);
     audioEl.loop = true; audioEl.volume = .75;
+    window.resolveAsset(CONFIG.audioFile).then(u => { if (u !== CONFIG.audioFile) audioEl.src = u; });
   } else if (CONFIG.youtubeId) {
     window.onYouTubeIframeAPIReady = () => {
       ytPlayer = new YT.Player('ytPlayer', {
@@ -1856,7 +1902,7 @@ body.started [data-hero]{animation:heroUp 1.1s cubic-bezier(.2,.8,.3,1) var(--d,
     // Sistem Fallback jika ekstensi file berbeda (jpg -> png -> webp -> jpeg -> placeholder)
     const exts = ['.jpg', '.png', '.webp', '.jpeg', '.JPG', '.PNG'];
     let extIdx = 0;
-    img.onerror = function() {
+    img._oldErr = function() {
       extIdx++;
       if (extIdx < exts.length) {
         this.src = `Assets/${p.name}${exts[extIdx]}`;
@@ -2067,6 +2113,7 @@ body.started [data-hero]{animation:heroUp 1.1s cubic-bezier(.2,.8,.3,1) var(--d,
   const vid = $('#memVideo');
   if (CONFIG.videoPoster) vid.poster = CONFIG.videoPoster;
   vid.src = CONFIG.videoSrc;
+  vid.addEventListener('loadeddata', () => { $('#vidNote').hidden = true; });
   vid.addEventListener('error', () => { $('#vidNote').hidden = false; });
   let resumeAfter = false;
   vid.addEventListener('play', () => { resumeAfter = musicOn; if (musicOn) pauseMusic(); });
